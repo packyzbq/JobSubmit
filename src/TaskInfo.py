@@ -5,7 +5,7 @@ class TaskStatus:
     tansk status enumeration
     """
     NEW = 0
-    INITIALIZED = 1
+    #INITIALIZED = 1
     PROCESSING = 2
     COMPLETED = 3
     FAILED = 4
@@ -23,18 +23,15 @@ class Task:
 
         self.history = [TaskDetail()]
 
-        self.init_script = []
-        self.work_script = []
-        self.finilize_script = []
+        self.task_boot = []
+        self.task_data = None
 
         self.res_dir = None
 
-    def initial(self,init_script=None, work_script=None, finilize_script=None, res_dir="./"):
-        self.init_script = init_script
-        self.work_script = work_script
-        self.finilize_script = finilize_script
+    def initial(self, work_script=None, res_dir="./"):
+        self.task_boot = work_script
         self.res_dir = res_dir
-        self.status = TaskStatus.INITIALIZED
+        self.status = TaskStatus.UNSCHEDULED
 
     def status(self):
         return self.status
@@ -42,7 +39,7 @@ class Task:
     def assign(self, wid):
         if not self.status is TaskStatus.NEW:
             try:
-                assert (self.status in [TaskStatus.FAILED, TaskStatus.UNSCHEDULED, TaskStatus.LOST, TaskStatus.INITIALIZED])
+                assert (self.status in [TaskStatus.FAILED, TaskStatus.UNSCHEDULED, TaskStatus.LOST])
             except:
                 #TODO
                 pass
@@ -69,3 +66,14 @@ class TaskDetail:
         assert(self.assigned_wid == -1)
         self.assigned_wid = wid
         self.time_scheduled = time.time()
+
+class Task4Worker:
+    def __init__(self, tid, task_boot, task_data, res_dir):
+        self.tid = tid
+        self.task_boot = task_boot
+        self.task_boot = task_data
+        self.res_dir = res_dir
+
+        self.time_start = 0
+        self.time_finish = 0
+        self.task_status = TaskStatus.NEW

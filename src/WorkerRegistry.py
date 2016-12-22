@@ -5,6 +5,14 @@ import threading
 
 LOST_WORKER_TIMEOUT = 10 # lost worker when overhead this thrashold
 
+class WorkerStatus:
+    NEW = -1
+    INITILAZED = 0
+    IDLE = 1
+    RUNNING = 2
+    ERROR = 3
+    LOST = 4
+
 class WorkerEntry:
     """
     contain worker information and task queue
@@ -16,6 +24,7 @@ class WorkerEntry:
         self.last_contact_time = self.registration_time
         self.idle_time = 0
         self.max_capacity = max_capacity
+        self.worker_status=None
 
         self.initialized = False
 

@@ -13,25 +13,24 @@ class Tags:
 
     TASK_FIN = 110      #w->m   client ask for new task
     TASK_SYNC = 111     #m<->w   master ask for work info
-    APP_SCH_INI = 112   #m->w   master schedule app and transfer the init data
-    TASK_ADD = 113      #m->w
-    TASK_REMOVE = 114   #m->w   remove worker task, maybe give it to another worker
-    APP_FIN = 115       #m->w   master tell worker how to finalize
-
-
-class Client_recv_handler(CM.IRecvhandler):
+    APP_INI = 112   #m->w   master schedule app and transfer the init data  (app_ini_boot, app_ini_data, res_dir)
+                    #w->m   init result                                     (wid, res_dir)
+    TASK_ADD = 114      #m->w                                                   (tid, task_boot, task_data, res_dir)
+    TASK_REMOVE = 115   #m->w   remove worker task, maybe give it to another worker (tid)
+    APP_FIN = 116       #m->w   master tell worker how to finalize
+                        #W->M   worker ask for finalize operation
 
 
 class Server():
     """
     Set up a server using C++ lib
     """
-
     def initial(self, svcname):
         self.server = SM.MPI_Server(self, svcname)
         ret = self.server.initialize()
         if ret != 0:
             #TODO log init error
+            pass
 
     def send(self):
         pass
@@ -40,17 +39,22 @@ class Server():
         pass
 
 
-
-
-
 class Client():
     """
     Set up a client(workerAgent) using C++ lib
     """
     def __init__(self, workeragent, svcname, portname):
+        pass
 
     def ping(self):
         # type: () -> object
+        pass
 
 
     def send(self):
+        pass
+
+class MSG:
+    def __init__(self, tag, pack):
+        self.tag = tag
+        self.pack = pack
