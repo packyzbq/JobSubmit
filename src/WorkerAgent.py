@@ -52,11 +52,9 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
         self.heartbeat_thread=None
         self.worker_thread=None
 
-        # init_data finalize_bash result dir can be store in Task object
-        #self.init_bash = None
-        #self.finalize_bash = None
+        #self.msgQueue = Queue.Queue()
 
-        #self.res_dir=None
+        # init_data finalize_bash result dir can be store in Task object
 
     def __getstate__(self):
 
