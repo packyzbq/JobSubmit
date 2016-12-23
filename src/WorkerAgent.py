@@ -7,6 +7,7 @@ from src.TaskInfo import TaskStatus
 import Client_Module as CM
 from src.MPI_Wrapper import Tags
 import threading
+import subprocess
 import json
 import time
 import Queue
@@ -64,13 +65,12 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
         self.task_queue=Queue.Queue(maxsize=self.capacity) #~need lock~ thread safe
         self.task_list={}
         self.task_completed_queue = Queue.Queue()
-        self.task_completed_list = []
         self.current_task = None
 
         self.heartbeat_thread=None
         self.cond = threading.Condition()
         self.worker=Worker(self, self.cond)
-        self.worker_status = WorkerStatus.NEW
+        #self.worker_status = WorkerStatus.NEW
 
         #self.app_init_boot = None
         #self.app_init_data = None
@@ -83,6 +83,7 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
         self.register_time = None
 
         self.initialized = False
+        self.finalized = False
 
 
     def register(self):
@@ -135,6 +136,10 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
                     task.task_status = TaskStatus.SCHEDULED_HALT
                     self.task_queue.put_nowait(task.tid)
                     self.task_list[task.tid] = task
+                    if self.worker.status == WorkerStatus.IDLE:
+                        self.cond.acquire()
+                        self.cond.notify()
+                        self.cond.release()
 
                 elif msg_t.tags == Tags.TASK_SYNC:
                     comm_dict = json.loads(msg_t.sbuf)
@@ -153,21 +158,38 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
                     pass
                 elif msg_t.tags == Tags.APP_FIN:
                     comm_dict = json.loads(msg_t.sbuf)
-                    self.worker.work_finalize(comm_dict['app_fin_boot'])
-                    self.worker_status = WorkerStatus.IDLE
+                    task = Task4Worker(0,comm_dict['app_fin_boot'], None, None)
+                    self.task_queue.put_nowait(task)
+                    self.worker.finialize = True
+                    if self.worker.status == WorkerStatus.IDLE:
+                        self.cond.acquire()
+                        self.cond.notify()
+                        self.cond.release()
+                    #self.worker.work_finalize(comm_dict['app_fin_boot'])
+                    #self.worker_status = WorkerStatus.IDLE
 
-            if not RT_PULL_REQUEST:
-                time.sleep(PULL_REQUEST_DELAY)
             if not self.initialized and self.task_completed_queue.qsize() > 0:
                 task = self.task_completed_queue.get()
                 if task.task_status == TaskStatus.COMPLETED:
                     self.worker_status = WorkerStatus.INITILAZED
+                    self.initialized = True
                     send_dict = dict()
                     send_dict['wid'] = self.wid
                     send_dict['res_dir'] = task.res_dir
                     send_str = json.dumps(send_dict)
                     self.client.send_string(send_str, len(send_str), 0, Tags.APP_INI)
-            if self.task_queue.qsize() == 0 and self.task_completed_queue.qsize() > 1:
+                else:# init error TODO and error handler and logging
+                    self.worker_status = WorkerStatus.IDLE
+                    send_dict = dict()
+                    send_dict['wid'] = self.wid
+                    send_dict['res_dir'] = task.res_dir
+                    send_dict['error'] = 'initialized error'
+                    send_str = json.dumps(send_dict)
+                    self.client.send_string(send_str, len(send_str), 0, Tags.APP_INI)
+
+
+            if self.task_queue.empty() and self.task_completed_queue.qsize() > 1:
+                self.worker_status = WorkerStatus.IDLE
                 comm_send = {}
                 comm_send['wid'] = self.wid
                 comm_send['ltc'] = str(self.task_completed_queue.get().tid)
@@ -175,7 +197,21 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
                     comm_send['ltc'] += ','+str(self.task_completed_queue.get().tid)
                 send_str = json.dumps(comm_send)
                 self.client.send_string(send_str, len(send_str), 0 ,Tags.APP_FIN)
+                if self.worker.status == WorkerStatus.COMPELETE:
+                    #notify worker and stop
+                    self.cond.acquire()
+                    self.cond.notify()
+                    self.cond.release()
+                    break
 
+
+            #TODO monitor the task queue, when less than thrashold, ask for more task
+
+
+            if not RT_PULL_REQUEST:
+                time.sleep(PULL_REQUEST_DELAY)
+
+        self.stop()
 
 
     def finalize_run(self):
@@ -212,39 +248,74 @@ class Worker(BaseThread):
         self.cond = cond
 
         self.initialized = False
+        self.finialize = False
+        self.status = WorkerStatus.NEW
 
     def run(self):
         #check worker agent's task queue
         while not self.initialized:
+            if self.status != WorkerStatus.NEW:
+                self.workagent.status = WorkerStatus.IDLE
             self.cond.acquire()
             self.cond.wait()
             self.cond.release()
             self.work_initial(self.workagent.task_queue.get())
+            if self.initialized == False:
+                continue
 
-        while not self.get_stop_flag():
-            if not self.workagent.task_queue.empty():
+
+        while not self.finialize:
+            self.status = WorkerStatus.RUNNING
+            while not self.workagent.task_queue.empty():
                 task = self.workagent.task_queue.get()
                 self.workagent.current_task = task.tid
-                self.do_work(task)
-            pass
+                err = self.do_work(task)
+                if err:
+                    #TODO change TaskStatus logging
+            self.status = WorkerStatus.IDLE
+            self.cond.acquire()
+            self.cond.wait()
+            self.cond.release()
 
-    def work_initial(self, init_task):
-        try:
-            #do the app init
-            if not init_task.task_boot and not init_task.task_data:
-                self.initialized = True
-                return 0
-            else:
-                #TODO execuate the bash/.py
-        except:
-            #TODO logging app init error and add error handler
-            raise
+        self.work_finalize(self.workagent.task_queue.get())
+        self.status = WorkerStatus.COMPELETE
+        self.cond.acquire()
+        self.cond.wait()
+        self.cond.release()
+
+
+    def do_task(self,task):
+        task.time_start = time.time()
+        task.task_status = TaskStatus.PROCESSING
+        rc = subprocess.Popen([task.task_boot, task.task_data], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        stdout, stderr = rc.communicate()
+        task.time_finish = time.time()
+        if len(stderr) == 0:  # no error
+            self.initialized = True
+            self.status = WorkerStatus.INITILAZED
+            task.task_status = TaskStatus.COMPLETED
+        else:
+            task.task_status = TaskStatus.FAILED
+            self.initialized = False
+            # TODO error handler and log
+
+    def work_initial(self, task):
+        #do the app init
+        if not task.task_boot and not task.task_data:
+            self.initialized = True
+        else:
+            #TODO execuate the bash/.py
+            self.do_task(task)
+        self.workagent.task_completed_queue.put(task)
+
 
     def do_work(self, task):
         pass
 
-    def work_finalize(self, app_fin_boot):
-        pass
+    def work_finalize(self, fin_task):
+        if fin_task.task_boot:
+            self.do_task(fin_task)
+        self.workagent.task_completed_queue.put(fin_task)
 
     def stop(self):
         pass

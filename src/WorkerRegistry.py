@@ -12,6 +12,7 @@ class WorkerStatus:
     RUNNING = 2
     ERROR = 3
     LOST = 4
+    COMPELETE = 5
 
 class WorkerEntry:
     """
