@@ -123,14 +123,14 @@ class WorkerAgent(BaseThread, CM.IRecv_handler):
             if not self.msgQueue.empty():
                 msg_t = self.msgQueue.get()
                 if msg_t.tags == Tags.MPI_REGISTY_ACK:
-                    if msg_t.pack.ibuf == 0:
+                    if msg_t.pack.ibuf > 0:
                         #TODO register successfully
                         self.heartbeat_thread = HeartbeatThread(self.client,self.wid)
                         self.register_flag = True
                     else:
                         #TODO register fail
                         raise
-                    self.wid = msg_t.ibuf
+                    self.wid = msg_t.pack.ibuf
 
                 elif msg_t.tags == Tags.APP_INI:
                     #TODO consider if not a complete command

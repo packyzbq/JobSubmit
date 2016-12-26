@@ -2,6 +2,7 @@ from src.BaseThread import BaseThread
 import src
 import Queue
 import json
+import time
 
 from src.MPI_Wrapper import Tags
 
@@ -62,13 +63,13 @@ class IScheduler(BaseThread):
         """
         raise NotImplementedError
 
-    def task_schedule(self, tasks):
+#    def task_schedule(self, tasks):
         """
         called when need to assign tasks to workers
         :param tasks:
         :return:
         """
-        raise NotImplementedError
+#        raise NotImplementedError
 
     def task_unschedule(self, tasks):
         """
@@ -85,28 +86,32 @@ class TestScheduler(IScheduler):
     def __init__(self, master):
         IScheduler.__init__(master)
         self.current_app = self.master.appmgr.applist(1)
+        self.completed_tasks = Queue.Queue()
+
+        self.processing = False
+
         for t in self.current_app.task_list:
             self.task_todo_Queue.put(self.current_app.task_list[t])
+
+    def worker_removed(self, w_entry):
+        pass
+
+    def task_unschedule(self, tasks):
+        pass
+
+    def task_failed(self,task):
+        pass
 
     def has_more_work(self):
         return not self.task_todo_Queue.empty()
 
-    def task_schedule(self, tasks):
-        while not self.task_todo_Queue.empty():
-            wid, room = self.master.worker_registry.get_aviliable_worker(True)
-            if wid != -1:
-                for r in range(0, room):
-                    self.master.schedule(wid, self.task_todo_Queue.get())
-            else:
-                #TODO no aviliable worker can be assigned
-                #Halt?
-                pass
 
     def worker_initialized(self, w_entry):
         send_str = MSG_wrapper(app_ini_boot = self.current_app.init_boot, app_ini_data=self.current_app.init_data, res_dir='/home/cc/zhaobq')
         self.master.server.send_str(send_str, len(send_str), w_entry.w_uuid, Tags.APP_INI)
 
     def run(self):
+        self.processing = True
         # init worker
         try:
             self.master.worker_registry.lock.require()
@@ -125,10 +130,26 @@ class TestScheduler(IScheduler):
                     for i in range(r):
                         tasks.append(self.task_todo_Queue.get_nowait())
                 except Queue.Empty:
-                    pass
-            self.master.schedule(w.wid, tasks)
+                    break
+                if tasks:
+                    self.master.schedule(w.w_uuid, tasks)
+                else:
+                    break
+            task_num = 0
+            try:
+                while True:
+                    t = self.completed_tasks.get()
+                    self.master.appmgr.task_done(self.current_app, t.tid)
+                    task_num+=1
+                    #TODO logging
+                    if len(self.master.appmgr.applist[self.current_app].task_list) == task_num:
+                        break
+            except Queue.Empty:
+                pass
 
-        while
+            time.sleep(0.1)
+        self.master.appmgr.finilize()
+        self.processing = False
 
 
 

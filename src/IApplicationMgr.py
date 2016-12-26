@@ -1,9 +1,11 @@
 import src.Master
 from src.TaskInfo import Task
+from src.TaskInfo import TaskStatus
 
 class Application:
-    def __init__(self,app_id):
+    def __init__(self,app_id, name):
         self.app_id = app_id
+        self.app_name=name
         self.init_boot = None
         self.init_data = None
 
@@ -51,4 +53,12 @@ class TestAppMgr(IApplicationMgr):
         tmp_task.initial("$JUNOTESTROOT/python/JunoTest/junotest UnitTest JunoTest", "/home/cc/zhaobq")
         self.applist[app_id].task_list[tmp_task.tid] = tmp_task
 
+    def task_done(self, app_id, task):
+        #TODO
+        if task.status == TaskStatus.FAILED:
+            print self.applist[app_id].name+" task error"
+        else:
+            print self.applist[app_id].name + " task finished completed"
 
+    def finilize(self):
+        pass

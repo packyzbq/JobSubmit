@@ -85,7 +85,7 @@ class IMasterController:
         """
         raise NotImplementedError
 
-class Master(SM.IRecvhandler, IMasterController, SM.IRecv_handler):
+class Master( IMasterController, SM.IRecv_handler):
 
     def __init__(self, rid = 0, svc_name='TEST'):
         self.svc_name = svc_name
@@ -121,8 +121,18 @@ class Master(SM.IRecvhandler, IMasterController, SM.IRecv_handler):
         # manage worker registery
 
 
-    def schedule(self, wid, tasks):
+    def schedule(self, w_uuid, tasks):
+        for t in tasks:
+            send_str = MSG_wrapper(tid=t.tid, task_boot=t.task_boot, task_data=t.task_data, res_dir='/home/cc/zhaobq')
+            self.server.send_string(send_str,len(send_str), w_uuid,Tags.TASK_ADD)
+
+
+    def unschedule(self, wid, tasks=None):
         pass
+
+    def remove_worker(self, wid):
+        self.task_scheduler.worker_removed(self.worker_registry.get(wid))
+        self.worker_registry.remove(wid)
 
 
 
@@ -130,7 +140,7 @@ class Master(SM.IRecvhandler, IMasterController, SM.IRecv_handler):
 
     def handler_recv(self, tags, pack):
         if tags == Tags.MPI_REGISTY:
-            pass
+            self.register(pack.ibuf)
         elif tags == Tags.TASK_SYNC:
             pass
         elif tags == Tags.TASK_FIN:
@@ -139,5 +149,6 @@ class Master(SM.IRecvhandler, IMasterController, SM.IRecv_handler):
             pass
 
     def register(self, w_uuid, capacity=10):
-        self.worker_registry.add_worker(w_uuid,capacity)
+        worker = self.worker_registry.add_worker(w_uuid,capacity)
+        self.server.send_int(worker.wid, 1, w_uuid, Tags.MPI_REGISTY_ACK)
         #TODO loggong worker register
