@@ -4,6 +4,7 @@ import Queue
 import threading
 
 LOST_WORKER_TIMEOUT = 10 # lost worker when overhead this thrashold
+IDLE_WORKER_TIMEOUT = 100
 
 class WorkerStatus:
     NEW = -1
@@ -24,22 +25,35 @@ class WorkerEntry:
         self.registration_time = time.time()
         self.last_contact_time = self.registration_time
         self.idle_time = 0
+
         self.max_capacity = max_capacity
+        self.assigned = 0
+
         self.worker_status=None
 
         self.initialized = False
 
         self.processing_task = None
+        self.current_app = None
         self.scheduled_tasks = Queue.Queue()
 
         self.alive = True
-        #LOCK ?
+        self.alive_lock = threading.RLock()
+
+        self.init_output=None
+        self.fin_output=None
 
     def capacity(self):
         return self.max_capacity-self.scheduled_tasks.qsize()
 
     def lost(self):
         return time.time()-self.last_contact_time > LOST_WORKER_TIMEOUT
+
+    def getStatus(self):
+        return self.worker_status
+
+    def idle_timeout(self):
+        return self.idle_time and IDLE_WORKER_TIMEOUT and time.time()-self.idle_time > IDLE_WORKER_TIMEOUT
 
 #    def getStatusReport(self):
 #       return "wid=%d alive = %d registered %s last_contact %s (%f seconds ago)\n" % \
@@ -54,10 +68,9 @@ class WorkerRegisty:
         self.last_wid= 0;
         self.lock = threading.RLock()
 
-        self.__waiting_workers = {}     # w_uuid:wid
         self.__alive_workers = {}       # w_uudi:wid
 
-    def add(self, wid, w_uuid, max_capacity):
+    def add_worker(self, w_uuid, max_capacity):
         self.lock.acquire()
         try:
             if self.__alive_workers.has_key(w_uuid):
@@ -72,6 +85,7 @@ class WorkerRegisty:
                 self.__all_workers_uuid[w_uuid] = newid
                 self.__alive_workers.append(w_uuid)
                 #TODO logging
+            self.lock.release()
             return w
         except:
             #TODO logging
@@ -93,3 +107,25 @@ class WorkerRegisty:
                 self.__alive_workers.remove(wid)
         finally:
             self.lock.release()
+
+    def get(self, wid):
+        return self.__alive_workers[wid]
+
+    def get_by_uuid(self, w_uuid):
+        return self.get(self.__all_workers_uuid[w_uuid])
+
+    def get_worker_list(self):
+        return self.__all_workers.values()
+
+    def get_aviliable_worker(self, room=False):
+        for w_uuid in self.__alive_workers:
+            wentry = self.get_by_uuid(w_uuid)
+            if wentry.initialized and wentry.assigned < wentry.max_capacity:
+                if room:
+                    return (wentry.wid, wentry.assigned < wentry.max_capacity)
+                else:
+                    return wentry.wid
+        if room:
+            return (-1,-1)
+        else:
+            return -1

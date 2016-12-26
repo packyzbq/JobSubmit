@@ -11,7 +11,6 @@ import subprocess
 import json
 import time
 import Queue
-import os,sys
 
 # constants
 miliseconds = 1000
@@ -45,7 +44,7 @@ class HeartbeatThread(BaseThread):
 
         self.stop()
 
-class WorkerAgent(BaseThread, CM.IRecvhandler):
+class WorkerAgent(BaseThread, CM.IRecv_handler):
     """
     agent
     """
@@ -65,7 +64,8 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
         self.task_queue=Queue.Queue(maxsize=self.capacity) #~need lock~ thread safe
         self.task_list={}
         self.task_completed_queue = Queue.Queue()
-        self.current_task = None
+
+        self.task_sync_flag = False
 
         self.heartbeat_thread=None
         self.cond = threading.Condition()
@@ -87,6 +87,7 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
 
 
     def register(self):
+        self.worker.start()
         ret = self.client.send_int(self.uuid, 1, 0, Tags.MPI_REGISTY)
         if ret != 0:
             #TODO add error handler
@@ -94,10 +95,15 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
         #TODO add logging  register to master
         self.register_time = time.time()
 
+    def MSG_wrapper(self, **kwd):
+        return json.dumps(kwd)
 
     def run(self):
         # use while to check receive buffer or Client buffer
+        self.client.run()
         self.register()
+
+
         while not self.get_stop_flag():
             if not self.register_flag:
                 if time.time() - self.register_time > delay:
@@ -105,6 +111,15 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
                     raise
                 else:
                     continue
+
+            # single task finish ,notify master
+            if self.task_sync_flag:
+                self.task_sync_flag = False
+                tmp_task= self.task_completed_queue.get()
+                send_str = self.MSG_wrapper(tid=tmp_task.tid, time_start=tmp_task.time_start, time_fin=tmp_task.time_finish, status=tmp_task.task_status)
+                self.client.send_string(send_str, len(send_str), 0, Tags.TASK_FIN)
+
+            # handle msg from master
             if not self.msgQueue.empty():
                 msg_t = self.msgQueue.get()
                 if msg_t.tags == Tags.MPI_REGISTY_ACK:
@@ -168,26 +183,29 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
                     #self.worker.work_finalize(comm_dict['app_fin_boot'])
                     #self.worker_status = WorkerStatus.IDLE
 
-            if not self.initialized and self.task_completed_queue.qsize() > 0:
-                task = self.task_completed_queue.get()
-                if task.task_status == TaskStatus.COMPLETED:
-                    self.worker_status = WorkerStatus.INITILAZED
-                    self.initialized = True
-                    send_dict = dict()
-                    send_dict['wid'] = self.wid
-                    send_dict['res_dir'] = task.res_dir
-                    send_str = json.dumps(send_dict)
-                    self.client.send_string(send_str, len(send_str), 0, Tags.APP_INI)
-                else:# init error TODO and error handler and logging
-                    self.worker_status = WorkerStatus.IDLE
-                    send_dict = dict()
-                    send_dict['wid'] = self.wid
-                    send_dict['res_dir'] = task.res_dir
-                    send_dict['error'] = 'initialized error'
-                    send_str = json.dumps(send_dict)
-                    self.client.send_string(send_str, len(send_str), 0, Tags.APP_INI)
+            # App init complete
+            if not self.initialized:
+                if self.task_completed_queue.qsize() > 0:
+                    task = self.task_completed_queue.get()
+                    if task.task_status == TaskStatus.COMPLETED:
+                        self.worker_status = WorkerStatus.INITILAZED
+                        self.initialized = True
+                        send_str = self.MSG_wrapper(wid=self.wid, res_dir=task.res_dir)
+                        self.client.send_string(send_str, len(send_str), 0, Tags.APP_INI)
+                    else:
+                        # init error TODO and error handler and logging
+                        self.worker_status = WorkerStatus.IDLE
+                        send_dict = dict()
+                        send_dict['wid'] = self.wid
+                        send_dict['res_dir'] = task.res_dir
+                        send_dict['error'] = 'initialized error'
+                        send_str = json.dumps(send_dict)
+                        self.client.send_string(send_str, len(send_str), 0, Tags.APP_INI)
+                #else:# ask for initial
+                    #self.client.send_int(self.wid,1,0,Tags.APP_INI_ASK)
 
 
+            # ask master for app fin, master may add new tasks
             if self.task_queue.empty() and self.task_completed_queue.qsize() > 1:
                 self.worker_status = WorkerStatus.IDLE
                 comm_send = {}
@@ -207,7 +225,7 @@ class WorkerAgent(BaseThread, CM.IRecvhandler):
 
             #TODO monitor the task queue, when less than thrashold, ask for more task
 
-
+            # loop delay
             if not RT_PULL_REQUEST:
                 time.sleep(PULL_REQUEST_DELAY)
 
@@ -272,6 +290,10 @@ class Worker(BaseThread):
                 err = self.do_work(task)
                 if err:
                     #TODO change TaskStatus logging
+                    pass
+                self.workagent.task_completed_queue.put(task)
+                self.workagent.task_sync_flag = True
+
             self.status = WorkerStatus.IDLE
             self.cond.acquire()
             self.cond.wait()
@@ -290,14 +312,15 @@ class Worker(BaseThread):
         rc = subprocess.Popen([task.task_boot, task.task_data], stderr=subprocess.PIPE, stdout=subprocess.PIPE)
         stdout, stderr = rc.communicate()
         task.time_finish = time.time()
-        if len(stderr) == 0:  # no error
-            self.initialized = True
-            self.status = WorkerStatus.INITILAZED
-            task.task_status = TaskStatus.COMPLETED
-        else:
-            task.task_status = TaskStatus.FAILED
-            self.initialized = False
-            # TODO error handler and log
+        return len(stderr) == 0
+#        if len(stderr) == 0:  # no error
+#            self.initialized = True
+#            self.status = WorkerStatus.INITILAZED
+#            task.task_status = TaskStatus.COMPLETED
+#        else:
+#            task.task_status = TaskStatus.FAILED
+#            self.initialized = False
+#            # TODO error handler and log
 
     def work_initial(self, task):
         #do the app init
@@ -305,12 +328,18 @@ class Worker(BaseThread):
             self.initialized = True
         else:
             #TODO execuate the bash/.py
-            self.do_task(task)
+            if self.do_task(task):
+                self.initialized = True
+                self.status = WorkerStatus.INITILAZED
+                task.task_status = TaskStatus.COMPLETED
+            else:
+                task.task_status =TaskStatus.FAILED
+                self.initialized = False
         self.workagent.task_completed_queue.put(task)
 
 
     def do_work(self, task):
-        pass
+        return self.do_task(task)
 
     def work_finalize(self, fin_task):
         if fin_task.task_boot:

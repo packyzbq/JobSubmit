@@ -11,10 +11,11 @@ class Tags:
     WORKER_STOP =100
 
 
-    TASK_FIN = 110      #w->m   client ask for new task
+    TASK_FIN = 110      #w->m   worker notify completed tasks,
     TASK_SYNC = 111     #m<->w   master ask for work info
     APP_INI = 112   #m->w   master schedule app and transfer the init data  (app_ini_boot, app_ini_data, res_dir)
                     #w->m   init result                                     (wid, res_dir)
+    APP_INI_ASK = 113   #w->m ask for app ini boot and data
     TASK_ADD = 114      #m->w                                                   (tid, task_boot, task_data, res_dir)
     TASK_REMOVE = 115   #m->w   remove worker task, maybe give it to another worker (tid)
     APP_FIN = 116       #m->w   master tell worker how to finalize
@@ -32,7 +33,10 @@ class Server():
             #TODO log init error
             pass
 
-    def send(self):
+    def send_int(self, int_data, msgsize, dest=0, tags):
+        pass
+
+    def send_string(self, str ,msgsize, dest=0, tag):
         pass
 
     def command_analyze(self, command):
@@ -51,7 +55,10 @@ class Client():
         pass
 
 
-    def send(self):
+    def send_int(self, int_data, msgsize, dest=0, tags):
+        pass
+
+    def send_string(self, str ,msgsize, dest=0, tag):
         pass
 
 class MSG:
