@@ -29,13 +29,13 @@ class WorkerEntry:
         self.max_capacity = max_capacity
         self.assigned = 0
 
-        self.worker_status=None
+        self.worker_status= WorkerStatus.NEW
 
         self.initialized = False
 
-        self.processing_task = None
+        #self.processing_task = None
         self.current_app = None
-        self.scheduled_tasks = Queue.Queue()
+        self.scheduled_tasks = {}
 
         self.alive = True
         self.alive_lock = threading.RLock()
@@ -80,7 +80,7 @@ class WorkerRegisty:
             else:
                 self.last_wid+=1
                 newid = self.last_wid
-                w = WorkerEntry(newid,w_uuid, max_capacity)
+                w = WorkerEntry(newid ,w_uuid, max_capacity)
                 self.__all_workers[newid] = w
                 self.__all_workers_uuid[w_uuid] = newid
                 self.__alive_workers.append(w_uuid)

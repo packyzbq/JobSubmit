@@ -48,17 +48,23 @@ class Client():
     Set up a client(workerAgent) using C++ lib
     """
     def __init__(self, workeragent, svcname, portname):
+        self.client = CM.MPI_Client(self, workeragent, svcname)
         pass
 
     def ping(self):
         # type: () -> object
         pass
 
+    def initial(self):
+        self.client.initialize()
+
+    def run(self):
+        self.client.run()
 
     def send_int(self, int_data, msgsize, dest=0, tags):
         pass
 
-    def send_string(self, str ,msgsize, dest=0, tag):
+    def send_string(self, str ,msgsize, dest=0, tags):
         pass
 
 class MSG:

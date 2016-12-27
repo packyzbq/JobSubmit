@@ -63,6 +63,14 @@ class IScheduler(BaseThread):
         """
         raise NotImplementedError
 
+    def task_completed(self, task):
+        """
+        this method is called when task completed ok.
+        :param task:  Task
+        :return:
+        """
+        raise NotImplementedError
+
 #    def task_schedule(self, tasks):
         """
         called when need to assign tasks to workers
@@ -97,7 +105,8 @@ class TestScheduler(IScheduler):
         pass
 
     def task_unschedule(self, tasks):
-        pass
+        for t in tasks:
+            self.task_todo_Queue.put(t)
 
     def task_failed(self,task):
         pass
@@ -105,8 +114,11 @@ class TestScheduler(IScheduler):
     def has_more_work(self):
         return not self.task_todo_Queue.empty()
 
+    def task_completed(self, task):
+        self.completed_tasks.put(task)
 
-    def worker_initialized(self, w_entry):
+
+    def worker_initialize(self, w_entry):
         send_str = MSG_wrapper(app_ini_boot = self.current_app.init_boot, app_ini_data=self.current_app.init_data, res_dir='/home/cc/zhaobq')
         self.master.server.send_str(send_str, len(send_str), w_entry.w_uuid, Tags.APP_INI)
 
@@ -118,7 +130,7 @@ class TestScheduler(IScheduler):
             for w in self.master.worker_registry.get_worker_list():
                 if not w.initialized and not w.current_app:
                     w.current_app = self.current_app
-                    self.worker_initialized(w)
+                    self.worker_initialize(w)
         finally:
             self.master.worker_registry.lock.release()
 

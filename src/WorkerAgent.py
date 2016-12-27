@@ -102,21 +102,24 @@ class WorkerAgent(BaseThread, CM.IRecv_handler):
         # use while to check receive buffer or Client buffer
         self.client.run()
         self.register()
-
+        #comfirm worker is registered
+        while not self.register_flag:
+            if time.time() - self.register_time > delay:
+                # TODO log: register timeout
+                raise
+            else:
+                continue
+        #ask for app_init
+        if self.wid:
+            self.client.send_int(self.wid,1,0, Tags.APP_INI_ASK)
 
         while not self.get_stop_flag():
-            if not self.register_flag:
-                if time.time() - self.register_time > delay:
-                    # TODO log: register timeout
-                    raise
-                else:
-                    continue
 
             # single task finish ,notify master
             if self.task_sync_flag:
                 self.task_sync_flag = False
                 tmp_task= self.task_completed_queue.get()
-                send_str = self.MSG_wrapper(tid=tmp_task.tid, time_start=tmp_task.time_start, time_fin=tmp_task.time_finish, status=tmp_task.task_status)
+                send_str = self.MSG_wrapper(wid=self.wid, tid=tmp_task.tid, time_start=tmp_task.time_start, time_fin=tmp_task.time_finish, status=tmp_task.task_status)
                 self.client.send_string(send_str, len(send_str), 0, Tags.TASK_FIN)
 
             # handle msg from master
@@ -195,11 +198,7 @@ class WorkerAgent(BaseThread, CM.IRecv_handler):
                     else:
                         # init error TODO and error handler and logging
                         self.worker_status = WorkerStatus.IDLE
-                        send_dict = dict()
-                        send_dict['wid'] = self.wid
-                        send_dict['res_dir'] = task.res_dir
-                        send_dict['error'] = 'initialized error'
-                        send_str = json.dumps(send_dict)
+                        send_str = self.MSG_wrapper(wid=self.wid, res_dir=task.res_dir, error='initialize error')
                         self.client.send_string(send_str, len(send_str), 0, Tags.APP_INI)
                 #else:# ask for initial
                     #self.client.send_int(self.wid,1,0,Tags.APP_INI_ASK)
@@ -328,7 +327,7 @@ class Worker(BaseThread):
             self.initialized = True
         else:
             #TODO execuate the bash/.py
-            if self.do_task(task):
+            if self.do_task(task) == 0:
                 self.initialized = True
                 self.status = WorkerStatus.INITILAZED
                 task.task_status = TaskStatus.COMPLETED

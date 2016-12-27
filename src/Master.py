@@ -1,15 +1,18 @@
 import Server_Module as SM
 from src.MPI_Wrapper import Server
 from src.MPI_Wrapper import Tags
+from src.MPI_Wrapper import MSG
 from src.IScheduler import TestScheduler
 from src.IApplicationMgr import TestAppMgr
+from src.TaskInfo import TaskStatus
 import src.WorkerRegistry
 import time
 import json
+import Queue
 from src.BaseThread import BaseThread
 
 CONTROL_DELAY = 2 #config to change
-
+WORKER_NUM = 1
 
 def MSG_wrapper(**kwd):
     return json.dumps(kwd)
@@ -85,7 +88,7 @@ class IMasterController:
         """
         raise NotImplementedError
 
-class Master( IMasterController, SM.IRecv_handler):
+class Master(IMasterController, SM.IRecv_handler):
 
     def __init__(self, rid = 0, svc_name='TEST'):
         self.svc_name = svc_name
@@ -105,6 +108,7 @@ class Master( IMasterController, SM.IRecv_handler):
         self.server.initialize(svc_name)
         self.server.run()
 
+        self.MSGqueue = Queue.Queue()
 
     def startProcessing(self):
         # create task -> appmgr
@@ -120,9 +124,63 @@ class Master( IMasterController, SM.IRecv_handler):
         self.task_scheduler.start()
         # manage worker registery
 
+        while not self.MSGqueue.empty():
+            msg = self.MSGqueue.get()
+            if msg.tag == Tags.MPI_REGISTY:
+                self.register(msg.pack.ibuf)
+            elif msg.tag == Tags.APP_INI_ASK:
+                wid = msg.pack.ibuf
+                init_boot, init_data = self.appmgr.get_app_init(wid)
+                appid, send_str = MSG_wrapper(app_init_boot=init_boot, app_init_data=init_data,
+                                              res_dir='/home/cc/zhaobq')
+                w = self.worker_registry.get(wid)
+                w.current_app = appid
+                self.server.send_string(send_str, len(send_str), w.w_uuid, Tags.APP_INI)
+            elif msg.tag == Tags.APP_INI:
+            # worker init success or fail
+                recv_dict = eval(json.loads(msg.pack.sbuf))
+                if 'error' in recv_dict:
+                    #worker init error TODO stop worker or reassign init_task?
+                    print "worker init error"
+                    pass
+                else:
+                    if self.appmgr.check_init_res(recv_dict['wid'], recv_dict['res_dir']):
+                        w = self.worker_registry.get(recv_dict['wid'])
+                        try:
+                            w.alive_lock.require()
+                            w.initialized = True
+                            w.worker_status = src.WorkerRegistry.WorkerStatus.INITILAZED
+                        except:
+                            pass
+                        finally:
+                            w.alive_lock.release()
+                    else: # init result error
+                        #TODO reassign init_task?
+                        pass
+
+            elif msg.tag == Tags.TASK_FIN:
+                recv_dict = eval(json.loads(msg.pack.sbuf))
+                # wid, tid, time_start, time_fin, status
+                w = self.worker_registry.get(recv_dict['wid'])
+                t = self.appmgr.get_task(w.current_app, recv_dict['tid'])
+                if recv_dict['status'] == TaskStatus.COMPLETED:
+                    t.status = TaskStatus.COMPLETED
+                    # TODO add task other details
+                    self.task_scheduler.task_completed(t)
+                    del(w.scheduled_tasks[recv_dict['tid']])
+                elif recv_dict['status'] == TaskStatus.FAILED:
+                    t.status = TaskStatus.FAILED
+                    self.task_scheduler.task_failed(t)
+                    del(w.scheduled_tasks[recv_dict['tid']])
+                else:
+                    pass
+
 
     def schedule(self, w_uuid, tasks):
         for t in tasks:
+            w = self.worker_registry.get_by_uuid(w_uuid)
+            w.worker_status = src.WorkerRegistry.WorkerStatus.RUNNING
+            w.scheduled_tasks.append(t.tid)
             send_str = MSG_wrapper(tid=t.tid, task_boot=t.task_boot, task_data=t.task_data, res_dir='/home/cc/zhaobq')
             self.server.send_string(send_str,len(send_str), w_uuid,Tags.TASK_ADD)
 
@@ -136,17 +194,10 @@ class Master( IMasterController, SM.IRecv_handler):
 
 
 
-
-
     def handler_recv(self, tags, pack):
-        if tags == Tags.MPI_REGISTY:
-            self.register(pack.ibuf)
-        elif tags == Tags.TASK_SYNC:
-            pass
-        elif tags == Tags.TASK_FIN:
-            pass
-        elif tags == Tags.APP_INI_ASK:
-            pass
+        msg = MSG(tags,pack)
+        self.MSGqueue.put_nowait(msg)
+
 
     def register(self, w_uuid, capacity=10):
         worker = self.worker_registry.add_worker(w_uuid,capacity)
