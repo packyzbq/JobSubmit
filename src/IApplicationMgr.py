@@ -9,7 +9,7 @@ class Application:
         self.init_boot = None
         self.init_data = None
 
-        self.task_list={} tid:task
+        self.task_list={} #tid:task
 
         self.fin_boot = None
         self.fin_data = None
@@ -87,3 +87,6 @@ class TestAppMgr(IApplicationMgr):
             if wid not in self.assign_list[k]:
                 self.assign_list[k].append(wid)
                 return k, self.applist[k].init_boot, self.applist[k].init_data
+
+    def get_app_fin(self, appid):
+        return self.applist[appid].fin_boot, self.applist[appid].fin_data

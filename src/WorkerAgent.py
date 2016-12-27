@@ -144,7 +144,6 @@ class WorkerAgent(BaseThread, CM.IRecv_handler):
                     self.cond.notify()
                     self.cond.release()
 
-
                 elif msg_t.tags == Tags.TASK_ADD:
                     if self.task_queue.qsize() == self.capacity :
                         #TODO add error handler: out of queue bound

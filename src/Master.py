@@ -110,6 +110,8 @@ class Master(IMasterController, SM.IRecv_handler):
 
         self.MSGqueue = Queue.Queue()
 
+        self.stop = False
+
     def startProcessing(self):
         # create task -> appmgr
         self.appmgr = TestAppMgr(self)
@@ -123,57 +125,67 @@ class Master(IMasterController, SM.IRecv_handler):
         self.task_scheduler = TestScheduler(self)
         self.task_scheduler.start()
         # manage worker registery
+        self.control_thread.start()
 
-        while not self.MSGqueue.empty():
-            msg = self.MSGqueue.get()
-            if msg.tag == Tags.MPI_REGISTY:
-                self.register(msg.pack.ibuf)
-            elif msg.tag == Tags.APP_INI_ASK:
-                wid = msg.pack.ibuf
-                init_boot, init_data = self.appmgr.get_app_init(wid)
-                appid, send_str = MSG_wrapper(app_init_boot=init_boot, app_init_data=init_data,
+        while not self.stop:
+            if not self.MSGqueue.empty():
+                msg = self.MSGqueue.get()
+
+                if msg.tag == Tags.MPI_REGISTY:
+                    self.register(msg.pack.ibuf)
+                elif msg.tag == Tags.APP_INI_ASK:
+                    wid = msg.pack.ibuf
+                    init_boot, init_data = self.appmgr.get_app_init(wid)
+                    appid, send_str = MSG_wrapper(app_init_boot=init_boot, app_init_data=init_data,
                                               res_dir='/home/cc/zhaobq')
-                w = self.worker_registry.get(wid)
-                w.current_app = appid
-                self.server.send_string(send_str, len(send_str), w.w_uuid, Tags.APP_INI)
-            elif msg.tag == Tags.APP_INI:
-            # worker init success or fail
-                recv_dict = eval(json.loads(msg.pack.sbuf))
-                if 'error' in recv_dict:
-                    #worker init error TODO stop worker or reassign init_task?
-                    print "worker init error"
-                    pass
-                else:
-                    if self.appmgr.check_init_res(recv_dict['wid'], recv_dict['res_dir']):
-                        w = self.worker_registry.get(recv_dict['wid'])
-                        try:
-                            w.alive_lock.require()
-                            w.initialized = True
-                            w.worker_status = src.WorkerRegistry.WorkerStatus.INITILAZED
-                        except:
-                            pass
-                        finally:
-                            w.alive_lock.release()
-                    else: # init result error
-                        #TODO reassign init_task?
+                    w = self.worker_registry.get(wid)
+                    w.current_app = appid
+                    self.server.send_string(send_str, len(send_str), w.w_uuid, Tags.APP_INI)
+                elif msg.tag == Tags.APP_INI:
+                # worker init success or fail
+                    recv_dict = eval(json.loads(msg.pack.sbuf))
+                    if 'error' in recv_dict:
+                        #worker init error TODO stop worker or reassign init_task?
+                        print "worker init error"
                         pass
-
-            elif msg.tag == Tags.TASK_FIN:
-                recv_dict = eval(json.loads(msg.pack.sbuf))
-                # wid, tid, time_start, time_fin, status
-                w = self.worker_registry.get(recv_dict['wid'])
-                t = self.appmgr.get_task(w.current_app, recv_dict['tid'])
-                if recv_dict['status'] == TaskStatus.COMPLETED:
-                    t.status = TaskStatus.COMPLETED
-                    # TODO add task other details
-                    self.task_scheduler.task_completed(t)
-                    del(w.scheduled_tasks[recv_dict['tid']])
-                elif recv_dict['status'] == TaskStatus.FAILED:
-                    t.status = TaskStatus.FAILED
-                    self.task_scheduler.task_failed(t)
-                    del(w.scheduled_tasks[recv_dict['tid']])
-                else:
-                    pass
+                    else:
+                        if self.appmgr.check_init_res(recv_dict['wid'], recv_dict['res_dir']):
+                            w = self.worker_registry.get(recv_dict['wid'])
+                            try:
+                                w.alive_lock.require()
+                                w.initialized = True
+                                w.worker_status = src.WorkerRegistry.WorkerStatus.INITILAZED
+                            except:
+                                pass
+                            finally:
+                                w.alive_lock.release()
+                        else: # init result error
+                            #TODO reassign init_task?
+                            pass
+                elif msg.tag == Tags.TASK_FIN:
+                    recv_dict = eval(json.loads(msg.pack.sbuf))
+                    # wid, tid, time_start, time_fin, status
+                    w = self.worker_registry.get(recv_dict['wid'])
+                    t = self.appmgr.get_task(w.current_app, recv_dict['tid'])
+                    if recv_dict['status'] == TaskStatus.COMPLETED:
+                        t.status = TaskStatus.COMPLETED
+                        # TODO add task other details
+                        self.task_scheduler.task_completed(t)
+                        del(w.scheduled_tasks[recv_dict['tid']])
+                    elif recv_dict['status'] == TaskStatus.FAILED:
+                        t.status = TaskStatus.FAILED
+                        self.task_scheduler.task_failed(t)
+                        del(w.scheduled_tasks[recv_dict['tid']])
+                    else:
+                        pass
+                elif msg.tag == Tags.APP_FIN:
+                    recv_dict = eval(json.loads(msg.pack.sbuf))
+                    if self.task_scheduler.has_more_work():
+                        #TODO schedule more work
+                    else:
+                        fin_boot,fin_data = self.appmgr.get_app_fin(recv_dict['wid'])
+                        send_str = MSG_wrapper(app_fin_boot=fin_boot, app_fin_data=fin_data)
+                        self.server.send_string(send_str, len(send_str), self.worker_registry.get(recv_dict['wid']).w_uuid, Tags.APP_FIN)
 
 
     def schedule(self, w_uuid, tasks):
