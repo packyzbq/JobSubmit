@@ -33,10 +33,10 @@ class Server():
             #TODO log init error
             pass
 
-    def send_int(self, int_data, msgsize, dest=0, tags):
+    def send_int(self, int_data, msgsize, dest, tags):
         pass
 
-    def send_string(self, str ,msgsize, dest=0, tag):
+    def send_string(self, str ,msgsize, dest, tag):
         pass
 
     def command_analyze(self, command):
@@ -61,10 +61,10 @@ class Client():
     def run(self):
         self.client.run()
 
-    def send_int(self, int_data, msgsize, dest=0, tags):
+    def send_int(self, int_data, msgsize, dest, tags):
         pass
 
-    def send_string(self, str ,msgsize, dest=0, tags):
+    def send_string(self, str ,msgsize, dest, tags):
         pass
 
 class MSG:

@@ -182,6 +182,7 @@ class Master(IMasterController, SM.IRecv_handler):
                     recv_dict = eval(json.loads(msg.pack.sbuf))
                     if self.task_scheduler.has_more_work():
                         #TODO schedule more work
+                        pass
                     else:
                         fin_boot,fin_data = self.appmgr.get_app_fin(recv_dict['wid'])
                         send_str = MSG_wrapper(app_fin_boot=fin_boot, app_fin_data=fin_data)
