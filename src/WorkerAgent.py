@@ -129,6 +129,7 @@ class WorkerAgent(BaseThread, CM.IRecv_handler):
                     if msg_t.pack.ibuf > 0:
                         #TODO register successfully
                         self.heartbeat_thread = HeartbeatThread(self.client,self.wid)
+                        self.heartbeat_thread.start()
                         self.register_flag = True
                     else:
                         #TODO register fail
