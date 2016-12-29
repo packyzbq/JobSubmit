@@ -44,7 +44,7 @@ class WorkerEntry:
         self.fin_output=None
 
     def capacity(self):
-        return self.max_capacity-self.scheduled_tasks.qsize()
+        return self.max_capacity-len(self.scheduled_tasks)
 
     def lost(self):
         return time.time()-self.last_contact_time > LOST_WORKER_TIMEOUT

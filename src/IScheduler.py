@@ -38,7 +38,7 @@ class IScheduler(BaseThread):
 
     #def worker_add(self, w_entry):
 
-    def worker_initialized(self, w_entry):
+    def worker_initialize(self, w_entry):
         """
         called by Master when a worker agent successfully initialized the worker, (maybe check the init_output)
         when the method returns, the worker can be marked as ready
