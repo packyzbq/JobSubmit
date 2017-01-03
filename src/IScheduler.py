@@ -71,14 +71,6 @@ class IScheduler(BaseThread):
         """
         raise NotImplementedError
 
-#    def task_schedule(self, tasks):
-        """
-        called when need to assign tasks to workers
-        :param tasks:
-        :return:
-        """
-#        raise NotImplementedError
-
     def task_unschedule(self, tasks):
         """
         called when tasks have been unschedule. tasks that have not been started or that are not completed
@@ -87,14 +79,17 @@ class IScheduler(BaseThread):
         """
 
 
+
 def MSG_wrapper(**kwd):
     return json.dumps(kwd)
 
 class TestScheduler(IScheduler):
-    def __init__(self, master):
+    def __init__(self, master, appmgr):
         IScheduler.__init__(master)
-        self.current_app = self.master.appmgr.applist(1)
+        self.current_app = self.appmgr.applist(1)
         self.completed_tasks = Queue.Queue()
+
+        self.appmgr = appmgr
 
         self.processing = False
 
@@ -103,6 +98,7 @@ class TestScheduler(IScheduler):
 
     def worker_removed(self, w_entry):
         pass
+
 
     def task_unschedule(self, tasks):
         for t in tasks:
@@ -116,6 +112,7 @@ class TestScheduler(IScheduler):
 
     def task_completed(self, task):
         self.completed_tasks.put(task)
+        self.appmgr.task_done(self.current_app.app_id, task)
 
 
     def worker_initialize(self, w_entry):
@@ -134,33 +131,35 @@ class TestScheduler(IScheduler):
         finally:
             self.master.worker_registry.lock.release()
 
-        while self.has_more_work() and not self.get_stop_flag():
-
-            for w,r in self.master.worker_registry.get_aviliable_worker(True):
-                tasks = []
-                try:
-                    for i in range(r):
-                        tasks.append(self.task_todo_Queue.get_nowait())
-                except Queue.Empty:
-                    break
-                if tasks:
-                    self.master.schedule(w.w_uuid, tasks)
-                else:
-                    break
+        while not self.get_stop_flag():
+            if self.has_more_work():
+            #schedule tasks to initialized workers
+                for w,r in self.master.worker_registry.get_aviliable_worker(True):
+                    tasks = []
+                    try:
+                        for i in range(r):
+                            tasks.append(self.task_todo_Queue.get_nowait())
+                    except Queue.Empty:
+                        break
+                    if tasks:
+                        self.master.schedule(w.w_uuid, tasks)
+                    else:
+                        break
+            #monitor task complete status
             task_num = 0
             try:
                 while True:
                     t = self.completed_tasks.get()
-                    self.master.appmgr.task_done(self.current_app, t.tid)
+                    self.appmgr.task_done(self.current_app, t.tid)
                     task_num+=1
                     #TODO logging
-                    if len(self.master.appmgr.applist[self.current_app].task_list) == task_num:
+                    if len(self.appmgr.applist[self.current_app].task_list) == task_num:
                         break
             except Queue.Empty:
                 pass
 
             time.sleep(0.1)
-        self.master.appmgr.finilize()
+        self.appmgr.finilize(self.current_app.app_id)
         self.processing = False
 
 

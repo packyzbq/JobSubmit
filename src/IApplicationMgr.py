@@ -1,11 +1,10 @@
-import src.Master
 from src.TaskInfo import Task
 from src.TaskInfo import TaskStatus
 
 class Application:
-    def __init__(self,app_id, name):
-        self.app_id = app_id
-        self.app_name=name
+    def __init__(self):
+        self.app_id = None
+        self.app_name= None
         self.init_boot = None
         self.init_data = None
 
@@ -14,16 +13,26 @@ class Application:
         self.fin_boot = None
         self.fin_data = None
 
+    def initialize(self, appid, name):
+        pass
+
+    def finalize(self):
+        pass
+
+    def merge(self):
+        pass
+
 
 class IApplicationMgr:
     def __init__(self, master):
         self.master = master
         self.applist = {}  #id: app{ini_boot,inid_data}
 
-    def init_app(self):
+    def add_app(self, application):
         """
-        Read init_script, fill init_boot/data and fin_boot/data
-        :return: application
+        add application into mgr applist, application must be initialized
+        :param application:
+        :return:
         """
         pass
 
@@ -43,8 +52,14 @@ class IApplicationMgr:
         """
         return True
 
+    def check_fin_res(self, wid, res_dir):
+        pass
+
     def check_task_res(self, wid, tid, res_dir):
         pass
+
+    def task_done(self, app_id, task):
+        raise NotImplementedError
 
 
 
@@ -54,7 +69,7 @@ class TestAppMgr(IApplicationMgr):
         self.__appid = 1
         self.__tid = 1
 
-        self.assign_list = {}
+        self.assign_list = {} #appid: app
 
     def init_app(self):
         app = Application(self.__appid)
@@ -62,8 +77,15 @@ class TestAppMgr(IApplicationMgr):
         self.assign_list[self.__appid] = []
         self.__appid += 1
 
+    def add_app(self, application):
+        self.applist[self.__appid] = application
+        self.__appid+=1
+
 
     def create_task(self, app_id):
+        assert self.applist.has_key(app_id)
+        if self.applist[app_id].task_list:
+            return
         tmp_task = Task(self.__tid)
         tmp_task.initial("$JUNOTESTROOT/python/JunoTest/junotest UnitTest JunoTest", "/home/cc/zhaobq")
         self.applist[app_id].task_list[tmp_task.tid] = tmp_task
@@ -79,14 +101,15 @@ class TestAppMgr(IApplicationMgr):
         else:
             print self.applist[app_id].name + " task finished completed"
 
-    def finilize(self):
-        pass
+    def finilize(self, appid):
+        self.applist[appid].merge()
 
-    def get_app_init(self, wid):
-        for k in self.assign_list.keys():
-            if wid not in self.assign_list[k]:
-                self.assign_list[k].append(wid)
-                return k, self.applist[k].init_boot, self.applist[k].init_data
+    def get_app_init(self, appid):
+        return self.applist[appid].init_boot, self.applist[appid].init_data
 
     def get_app_fin(self, appid):
         return self.applist[appid].fin_boot, self.applist[appid].fin_data
+
+
+def runfile_analyzer(runfile):
+    pass

@@ -99,7 +99,7 @@ class Master(IMasterController, SM.IRecv_handler):
 
         self.control_thread = ControlThread(self)
 
-        self.appmgr = None
+        #self.appmgr = None
 
         self.__tid = 1
         self.__wid = 1
@@ -114,12 +114,10 @@ class Master(IMasterController, SM.IRecv_handler):
 
     def startProcessing(self):
         # create task -> appmgr
-        self.appmgr = TestAppMgr(self)
-        self.appmgr.init_app()
-        if self.appmgr.applist.has_key(1):
-            self.appmgr.create_task(1)
-        else:
-            print "error no such application"
+        #self.appmgr = TestAppMgr(self)
+        #self.appmgr.init_app()
+        #if self.appmgr.applist.has_key(1):
+            #self.appmgr.create_task(1)
 
         # schedule task -> scheduler
         self.task_scheduler = TestScheduler(self)
