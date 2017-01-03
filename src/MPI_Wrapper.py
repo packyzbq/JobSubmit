@@ -4,6 +4,8 @@ import WorkerAgent
 #Waring remember to add exception handler: try catch
 
 class Tags:
+    MPI_PING = 6
+
     MPI_REGISTY = 11
     MPI_REGISTY_ACK = 12
     MPI_DISCONNECT = 13
@@ -20,6 +22,8 @@ class Tags:
     TASK_REMOVE = 115   #m->w   remove worker task, maybe give it to another worker (tid)
     APP_FIN = 116       #m->w   master tell worker how to finalize
                         #W->M   worker ask for finalize operation
+    LOGOUT  = 120
+
 
 
 class Server():
@@ -51,9 +55,8 @@ class Client():
         self.client = CM.MPI_Client(self, workeragent, svcname)
         pass
 
-    def ping(self):
-        # type: () -> object
-        pass
+    def ping(self, wid):
+        self.send_int(wid, 1, 0, Tags.MPI_PING)
 
     def initial(self):
         self.client.initialize()
