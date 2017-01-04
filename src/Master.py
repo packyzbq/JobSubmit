@@ -99,7 +99,6 @@ class Master(IMasterController, SM.IRecv_handler):
 
         self.control_thread = ControlThread(self)
 
-        #self.appmgr = None
 
         self.__tid = 1
         self.__wid = 1
@@ -164,18 +163,22 @@ class Master(IMasterController, SM.IRecv_handler):
                     recv_dict = eval(json.loads(msg.pack.sbuf))
                     # wid, tid, time_start, time_fin, status
                     w = self.worker_registry.get(recv_dict['wid'])
-                    t = self.appmgr.get_task(w.current_app, recv_dict['tid'])
-                    if recv_dict['status'] == TaskStatus.COMPLETED:
-                        t.status = TaskStatus.COMPLETED
-                        # TODO add task other details
-                        self.task_scheduler.task_completed(t)
-                        del(w.scheduled_tasks[recv_dict['tid']])
-                    elif recv_dict['status'] == TaskStatus.FAILED:
-                        t.status = TaskStatus.FAILED
-                        self.task_scheduler.task_failed(t)
-                        del(w.scheduled_tasks[recv_dict['tid']])
-                    else:
-                        pass
+                    try:
+                        w.alive_lock.require()
+                        t = self.appmgr.get_task(w.current_app, recv_dict['tid'])
+                        if recv_dict['status'] == TaskStatus.COMPLETED:
+                            t.status = TaskStatus.COMPLETED
+                            # TODO add task other details
+                            self.task_scheduler.task_completed(t)
+                            del(w.scheduled_tasks[recv_dict['tid']])
+                        elif recv_dict['status'] == TaskStatus.FAILED:
+                            t.status = TaskStatus.FAILED
+                            self.task_scheduler.task_failed(t)
+                            del(w.scheduled_tasks[recv_dict['tid']])
+                        else:
+                            pass
+                    finally:
+                        w.alive_lock.release()
                 elif msg.tag == Tags.APP_FIN:
                     recv_dict = eval(json.loads(msg.pack.sbuf))
                     if self.task_scheduler.has_more_work():
@@ -214,3 +217,5 @@ class Master(IMasterController, SM.IRecv_handler):
         worker = self.worker_registry.add_worker(w_uuid,capacity)
         self.server.send_int(worker.wid, 1, w_uuid, Tags.MPI_REGISTY_ACK)
         #TODO loggong worker register
+
+

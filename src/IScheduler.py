@@ -23,9 +23,6 @@ class IScheduler(BaseThread):
         self.task_todo_Queue = Queue.Queue()
         self.task_unschedule_queue = Queue.Queue()
 
-    def run(self):
-        pass
-
     def initialize(self):
         pass
 
@@ -97,7 +94,8 @@ class TestScheduler(IScheduler):
             self.task_todo_Queue.put(self.current_app.task_list[t])
 
     def worker_removed(self, w_entry):
-        pass
+        for k,v in w_entry.scheduled_tasks:
+            self.task_todo_Queue.put_nowait(v)
 
 
     def task_unschedule(self, tasks):
@@ -105,7 +103,7 @@ class TestScheduler(IScheduler):
             self.task_todo_Queue.put(t)
 
     def task_failed(self,task):
-        pass
+        self.task_completed(task)
 
     def has_more_work(self):
         return not self.task_todo_Queue.empty()
@@ -131,6 +129,7 @@ class TestScheduler(IScheduler):
         finally:
             self.master.worker_registry.lock.release()
 
+        task_num = 0
         while not self.get_stop_flag():
             if self.has_more_work():
             #schedule tasks to initialized workers
@@ -146,20 +145,20 @@ class TestScheduler(IScheduler):
                     else:
                         break
             #monitor task complete status
-            task_num = 0
             try:
-                while True:
-                    t = self.completed_tasks.get()
-                    self.appmgr.task_done(self.current_app, t.tid)
-                    task_num+=1
-                    #TODO logging
-                    if len(self.appmgr.applist[self.current_app].task_list) == task_num:
-                        break
+                #while True:
+                t = self.completed_tasks.get()
+                self.appmgr.task_done(self.current_app, t.tid)
+                task_num+=1
+                #TODO logging
+                if len(self.appmgr.applist[self.current_app].task_list) == task_num:
+                    break
             except Queue.Empty:
                 pass
 
             time.sleep(0.1)
         self.appmgr.finilize(self.current_app.app_id)
+        #TODO logging app finial
         self.processing = False
 
 

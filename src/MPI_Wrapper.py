@@ -30,18 +30,19 @@ class Server():
     """
     Set up a server using C++ lib
     """
-    def initial(self, svcname):
+    def __init__(self, svcname):
         self.server = SM.MPI_Server(self, svcname)
+    def initial(self):
         ret = self.server.initialize()
         if ret != 0:
             #TODO log init error
             pass
 
     def send_int(self, int_data, msgsize, dest, tags):
-        pass
+        self.server.send_int(int_data, msgsize, dest, tags)
 
     def send_string(self, str ,msgsize, dest, tag):
-        pass
+        self.server.send_string(str, msgsize, dest, tag)
 
     def command_analyze(self, command):
         pass
@@ -65,10 +66,10 @@ class Client():
         self.client.run()
 
     def send_int(self, int_data, msgsize, dest, tags):
-        pass
+        self.client.send_int(int_data, msgsize, dest, tags)
 
     def send_string(self, str ,msgsize, dest, tags):
-        pass
+        self.send_string(str, msgsize, dest, tags)
 
 class MSG:
     def __init__(self, tag, pack):
