@@ -188,6 +188,13 @@ class Master(IMasterController, SM.IRecv_handler):
                         fin_boot,fin_data = self.appmgr.get_app_fin(recv_dict['wid'])
                         send_str = MSG_wrapper(app_fin_boot=fin_boot, app_fin_data=fin_data)
                         self.server.send_string(send_str, len(send_str), self.worker_registry.get(recv_dict['wid']).w_uuid, Tags.APP_FIN)
+                elif msg.tag == Tags.MPI_PING:
+                    w = self.worker_registry.get(msg.pack.ibuf)
+                    try:
+                        w.alive_lock.require()
+                        w.last_contact_time = time.time()
+                    finally:
+                        w.alive_lock.release()
 
 
     def schedule(self, w_uuid, tasks):

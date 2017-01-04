@@ -1,4 +1,4 @@
-import src.WorkerAgent
+from src.WorkerAgent import WorkerAgent
 
-workerAgent = src.WorkerAgent(0, svcname='hello')
+workerAgent = WorkerAgent(svcname='hello')
 
