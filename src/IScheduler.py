@@ -1,5 +1,4 @@
 from src.BaseThread import BaseThread
-import src
 import Queue
 import json
 import time
