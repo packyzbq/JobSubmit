@@ -6,6 +6,7 @@ class BaseThread(threading.Thread):
     Master Worker Base thread class
     """
     def __init__(self, name=None):
+        super(BaseThread, self).__init__(name=name)
         self.setDaemon(1)
         self.__should_stop_flag = False
         #TODO add log output: BaseThread object create:self.__class__.__name__
