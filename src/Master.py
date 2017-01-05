@@ -3,7 +3,6 @@ from src.MPI_Wrapper import Server
 from src.MPI_Wrapper import Tags
 from src.MPI_Wrapper import MSG
 from src.IScheduler import TestScheduler
-from src.IApplicationMgr import TestAppMgr
 from src.TaskInfo import TaskStatus
 import src.WorkerRegistry
 import time

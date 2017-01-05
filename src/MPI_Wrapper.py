@@ -1,6 +1,5 @@
 import Server_Module as SM
 import Client_Module as CM
-import WorkerAgent
 #Waring remember to add exception handler: try catch
 
 class Tags:
@@ -26,7 +25,7 @@ class Tags:
 
 
 
-class Server():
+class Server:
     """
     Set up a server using C++ lib
     """
@@ -48,7 +47,7 @@ class Server():
         pass
 
 
-class Client():
+class Client:
     """
     Set up a client(workerAgent) using C++ lib
     """
