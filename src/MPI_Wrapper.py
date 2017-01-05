@@ -1,5 +1,6 @@
 import Server_Module as SM
 import Client_Module as CM
+import Queue
 #Waring remember to add exception handler: try catch
 
 class Tags:
@@ -23,14 +24,20 @@ class Tags:
                         #W->M   worker ask for finalize operation
     LOGOUT  = 120
 
+class Recv_handler(SM.IRecv_handler):
+    def __init__(self):
+        self.MSGqueue = Queue.Queue()
 
+    def handler_recv(self, tags, pack):
+        msg = MSG(tags,pack)
+        self.MSGqueue.put_nowait(msg)
 
 class Server:
     """
     Set up a server using C++ lib
     """
-    def __init__(self, svcname):
-        self.server = SM.MPI_Server(self, svcname)
+    def __init__(self, recv_handler, svcname):
+        self.server = SM.MPI_Server(recv_handler, svcname)
     def initial(self):
         ret = self.server.initialize()
         if ret != 0:
@@ -51,8 +58,8 @@ class Client:
     """
     Set up a client(workerAgent) using C++ lib
     """
-    def __init__(self, workeragent, svcname, portname):
-        self.client = CM.MPI_Client(self, workeragent, svcname)
+    def __init__(self, recv_handler, svcname, portname):
+        self.client = CM.MPI_Client(recv_handler, svcname)
         pass
 
     def ping(self, wid):

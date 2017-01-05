@@ -1,7 +1,7 @@
-import Server_Module as SM
 from src.MPI_Wrapper import Server
 from src.MPI_Wrapper import Tags
 from src.MPI_Wrapper import MSG
+from src.MPI_Wrapper import Recv_handler
 from src.IScheduler import TestScheduler
 from src.TaskInfo import TaskStatus
 import src.WorkerRegistry
@@ -87,7 +87,7 @@ class IMasterController:
         """
         raise NotImplementedError
 
-class Master(IMasterController, SM.IRecv_handler):
+class Master(IMasterController):
 
     def __init__(self, svc_name='TEST'):
         self.svc_name = svc_name
@@ -96,17 +96,17 @@ class Master(IMasterController, SM.IRecv_handler):
         # task scheduler
         self.task_scheduler = None
 
+        self.recv_handler = Recv_handler()
+
         self.control_thread = ControlThread(self)
 
 
         self.__tid = 1
         self.__wid = 1
 
-        self.server= Server(self, "svcname")
+        self.server= Server(self.recv_handler, "svcname")
         self.server.initialize(svc_name)
         self.server.run()
-
-        self.MSGqueue = Queue.Queue()
 
         self.stop = False
 
@@ -124,8 +124,8 @@ class Master(IMasterController, SM.IRecv_handler):
         self.control_thread.start()
 
         while not self.stop:
-            if not self.MSGqueue.empty():
-                msg = self.MSGqueue.get()
+            if not self.recv_handler.MSGqueue.empty():
+                msg = self.recv_handler.MSGqueue.get()
 
                 if msg.tag == Tags.MPI_REGISTY:
                     self.register(msg.pack.ibuf)
@@ -214,9 +214,6 @@ class Master(IMasterController, SM.IRecv_handler):
 
 
 
-    def handler_recv(self, tags, pack):
-        msg = MSG(tags,pack)
-        self.MSGqueue.put_nowait(msg)
 
 
     def register(self, w_uuid, capacity=10):
