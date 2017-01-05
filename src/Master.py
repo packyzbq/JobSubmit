@@ -90,7 +90,7 @@ class IMasterController:
 
 class Master(IMasterController, SM.IRecv_handler):
 
-    def __init__(self, rid = 0, svc_name='TEST'):
+    def __init__(self, svc_name='TEST'):
         self.svc_name = svc_name
         # worker registery
         self.worker_registry = src.WorkerRegistry.WorkerRegisty()
