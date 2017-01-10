@@ -24,20 +24,20 @@ class Tags:
                         #W->M   worker ask for finalize operation
     LOGOUT  = 120
 
-class Recv_handler(SM.IRecv_handler):
-    def __init__(self):
-        self.MSGqueue = Queue.Queue()
-
-    def handler_recv(self, tags, pack):
-        msg = MSG(tags,pack)
-        self.MSGqueue.put_nowait(msg)
+#class Recv_handler(SM.IRecv_handler):
+#    def __init__(self):
+#        self.MSGqueue = Queue.Queue()
+#
+#    def handler_recv(self, tags, pack):
+#        msg = MSG(tags,pack)
+#        self.MSGqueue.put_nowait(msg)
 
 class Server:
     """
     Set up a server using C++ lib
     """
-    def __init__(self, recv_handler, svcname):
-        self.server = SM.MPI_Server(recv_handler, svcname)
+    def __init__(self, recv_buffer, svcname):
+        self.server = SM.MPI_Server(recv_buffer, svcname)
     def initial(self):
         ret = self.server.initialize()
         if ret != 0:
@@ -58,12 +58,12 @@ class Client:
     """
     Set up a client(workerAgent) using C++ lib
     """
-    def __init__(self, recv_handler, svcname, portname):
-        self.client = CM.MPI_Client(recv_handler, svcname)
+    def __init__(self, recv_buffer, svcname, portname):
+        self.client = CM.MPI_Client(recv_buffer, svcname)
         pass
 
-    def ping(self, wid):
-        self.send_int(wid, 1, 0, Tags.MPI_PING)
+    def ping(self, uuid):
+        self.send_string(uuid, len(uuid), 0, Tags.MPI_PING)
 
     def initial(self):
         self.client.initialize()

@@ -1,7 +1,7 @@
 from src.MPI_Wrapper import Server
 from src.MPI_Wrapper import Tags
 from src.MPI_Wrapper import MSG
-from src.MPI_Wrapper import Recv_handler
+from IRecv_Module as IM
 from src.IScheduler import TestScheduler
 from src.TaskInfo import TaskStatus
 import src.WorkerRegistry
@@ -96,7 +96,7 @@ class Master(IMasterController):
         # task scheduler
         self.task_scheduler = None
 
-        self.recv_handler = Recv_handler()
+        self.recv_buffer = IM.IRecv_buffer()
 
         self.control_thread = ControlThread(self)
 
@@ -104,7 +104,7 @@ class Master(IMasterController):
         self.__tid = 1
         self.__wid = 1
 
-        self.server= Server(self.recv_handler, "svcname")
+        self.server= Server(self.recv_buffer, "svcname")
         self.server.initialize(svc_name)
         self.server.run()
 
@@ -124,13 +124,15 @@ class Master(IMasterController):
         self.control_thread.start()
 
         while not self.stop:
-            if not self.recv_handler.MSGqueue.empty():
-                msg = self.recv_handler.MSGqueue.get()
+            if not self.recv_buffer.empty():
+                msg = self.recv_buffer.get()
+                if msg.tag == -1:
+                    continue
 
                 if msg.tag == Tags.MPI_REGISTY:
-                    self.register(msg.pack.ibuf)
+                    self.register(msg.ibuf)
                 elif msg.tag == Tags.APP_INI_ASK:
-                    wid = msg.pack.ibuf
+                    wid = msg.ibuf
                     init_boot, init_data = self.appmgr.get_app_init(wid)
                     appid, send_str = MSG_wrapper(app_init_boot=init_boot, app_init_data=init_data,
                                               res_dir='/home/cc/zhaobq')
@@ -139,7 +141,7 @@ class Master(IMasterController):
                     self.server.send_string(send_str, len(send_str), w.w_uuid, Tags.APP_INI)
                 elif msg.tag == Tags.APP_INI:
                 # worker init success or fail
-                    recv_dict = eval(json.loads(msg.pack.sbuf))
+                    recv_dict = eval(json.loads(msg.sbuf))
                     if 'error' in recv_dict:
                         #worker init error TODO stop worker or reassign init_task?
                         print "worker init error"
@@ -159,7 +161,7 @@ class Master(IMasterController):
                             #TODO reassign init_task?
                             pass
                 elif msg.tag == Tags.TASK_FIN:
-                    recv_dict = eval(json.loads(msg.pack.sbuf))
+                    recv_dict = eval(json.loads(msg.sbuf))
                     # wid, tid, time_start, time_fin, status
                     w = self.worker_registry.get(recv_dict['wid'])
                     try:
@@ -179,7 +181,7 @@ class Master(IMasterController):
                     finally:
                         w.alive_lock.release()
                 elif msg.tag == Tags.APP_FIN:
-                    recv_dict = eval(json.loads(msg.pack.sbuf))
+                    recv_dict = eval(json.loads(msg.sbuf))
                     if self.task_scheduler.has_more_work():
                         #TODO schedule more work
                         pass
@@ -188,7 +190,7 @@ class Master(IMasterController):
                         send_str = MSG_wrapper(app_fin_boot=fin_boot, app_fin_data=fin_data)
                         self.server.send_string(send_str, len(send_str), self.worker_registry.get(recv_dict['wid']).w_uuid, Tags.APP_FIN)
                 elif msg.tag == Tags.MPI_PING:
-                    w = self.worker_registry.get(msg.pack.ibuf)
+                    w = self.worker_registry.get(msg.ibuf)
                     try:
                         w.alive_lock.require()
                         w.last_contact_time = time.time()

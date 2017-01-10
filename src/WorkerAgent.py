@@ -1,7 +1,7 @@
 from src.BaseThread import BaseThread
 from src.MPI_Wrapper import Client
 from src.MPI_Wrapper import MSG
-from src.MPI_Wrapper import Recv_handler
+import IRecv_Module as IM
 from src.WorkerRegistry import WorkerStatus
 from src.TaskInfo import Task4Worker
 from src.TaskInfo import TaskStatus
@@ -51,10 +51,10 @@ class WorkerAgent(BaseThread):
     """
     def __init__(self, svcname, capacity=5):
         BaseThread.__init__(self, name='worker')
-        self.recv_handler = Recv_handler()
+        self.recv_buffer = IM.IRecv_buffer()
         import uuid as uuid_mod
         self.uuid = str(uuid_mod.uuid4())
-        self.client = Client(self.recv_handler, svcname, "")
+        self.client = Client(self.recv_buffer, svcname, self.uuid)
         if self.client.initialize() == 0:
             #TODO logging connect success
             pass
@@ -91,7 +91,7 @@ class WorkerAgent(BaseThread):
 
     def register(self):
         self.worker.start()
-        ret = self.client.send_int(self.uuid, 1, 0, Tags.MPI_REGISTY)
+        ret = self.client.send_string(self.uuid, len(self.uuid), 0, Tags.MPI_REGISTY)
         if ret != 0:
             #TODO add error handler
             pass
@@ -111,13 +111,15 @@ class WorkerAgent(BaseThread):
             if self.register_flag and self.initialized:
                 break
 
-            if not self.recv_handler.MSGqueue.empty():
-                msg_t = self.recv_handler.MSGqueue.get()
+            if not self.recv_buffer.empty():
+                msg_t = self.recv_buffer.get()
+                if msg_t.tag == -1:
+                    continue
                 # comfirm worker is registered
                 if not self.register_flag:
-                    if msg_t.tags == Tags.MPI_REGISTY_ACK:
-                        self.wid = msg_t.pack.ibuf
-                        if msg_t.pack.ibuf > 0:
+                    if msg_t.tag == Tags.MPI_REGISTY_ACK:
+                        self.wid = msg_t.ibuf
+                        if msg_t.ibuf > 0:
                             # TODO register successfully
                             self.heartbeat_thread = HeartbeatThread(self.client, self.wid)
                             self.heartbeat_thread.start()
@@ -135,7 +137,7 @@ class WorkerAgent(BaseThread):
                         continue
                 # confirm worker is initialed
                 if not self.initialized:
-                    if msg_t.tags == Tags.APP_INI:
+                    if msg_t.tag == Tags.APP_INI:
                         task_info = eval(json.loads(msg_t.sbuf))
                         assert task_info.has_key('app_ini_boot') and task_info.has_key('app_ini_data') and task_info.has_key('res_dir')
                         tmp_task = Task4Worker(0, task_info['app_ini_boot'], task_info['app_ini_data'], task_info['res_dir'])
@@ -154,20 +156,19 @@ class WorkerAgent(BaseThread):
         while not self.get_stop_flag():
 
             # single task finish ,notify master
-            try:
-                self.task_sync_lock.acquire()
-                if self.task_sync_flag:
-                    self.task_sync_flag = False
+            self.task_sync_lock.acquire()
+            if self.task_sync_flag:
+                self.task_sync_flag = False
+                self.task_sync_lock.release()
+                while not self.task_completed_queue.empty():
                     tmp_task= self.task_completed_queue.get()
                     send_str = self.MSG_wrapper(wid=self.wid, tid=tmp_task.tid, time_start=tmp_task.time_start, time_fin=tmp_task.time_finish, status=tmp_task.task_status)
                     self.client.send_string(send_str, len(send_str), 0, Tags.TASK_FIN)
-            finally:
-                self.task_sync_lock.release()
 
             # handle msg from master
-            if not self.recv_handler.MSGqueue.empty():
-                msg_t = self.recv_handler.MSGqueue.get()
-                if msg_t.tags == Tags.APP_INI:
+            if not self.recv_buffer.empty():
+                msg_t = self.recv_buffer.get()
+                if msg_t.tag == Tags.APP_INI:
                     #TODO consider if not a complete command
                     comm_dict = json.loads(msg_t.sbuf)
                     task = Task4Worker(0, comm_dict['app_init_boot'], comm_dict['app_init_data'], comm_dict['res_dir'])
@@ -176,7 +177,7 @@ class WorkerAgent(BaseThread):
                     self.cond.notify()
                     self.cond.release()
 
-                elif msg_t.tags == Tags.TASK_ADD:
+                elif msg_t.tag == Tags.TASK_ADD:
                     if self.task_queue.qsize() == self.capacity :
                         #TODO add error handler: out of queue bound
                         raise
@@ -190,7 +191,7 @@ class WorkerAgent(BaseThread):
                         self.cond.notify()
                         self.cond.release()
 
-                elif msg_t.tags == Tags.TASK_SYNC:
+                elif msg_t.tag == Tags.TASK_SYNC:
                     comm_dict = json.loads(msg_t.sbuf)
                     comm_send = dict()
                     t_tid = comm_dict['tid']
@@ -201,11 +202,11 @@ class WorkerAgent(BaseThread):
                     send_str = json.dumps(comm_send)
                     self.client.send_string(send_str, len(send_str), 0 , Tags.TASK_SYNC)
 
-                elif msg_t.tags == Tags.TASK_REMOVE:
+                elif msg_t.tag == Tags.TASK_REMOVE:
                     pass
-                elif msg_t.tags == Tags.WORKER_STOP:
+                elif msg_t.tag == Tags.WORKER_STOP:
                     pass
-                elif msg_t.tags == Tags.APP_FIN:
+                elif msg_t.tag == Tags.APP_FIN:
                     comm_dict = json.loads(msg_t.sbuf)
                     task = Task4Worker(0, comm_dict['app_fin_boot'], None, None)
                     self.task_queue.put_nowait(task)
@@ -287,9 +288,9 @@ class WorkerAgent(BaseThread):
     def add_task(self, taskid , task):
         pass
 
-    def handler_recv(self, tags, pack):
-        msg = MSG(tags, pack)
-        self.recv_handler.MSGqueue.put_nowait(msg)
+#    def handler_recv(self, tags, pack):
+#        msg = MSG(tags, pack)
+#        self.recv_handler.MSGqueue.put_nowait(msg)
 
 class Worker(BaseThread):
     """
