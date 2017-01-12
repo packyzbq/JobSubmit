@@ -214,10 +214,6 @@ class Master(IMasterController):
         self.task_scheduler.worker_removed(self.worker_registry.get(wid))
         self.worker_registry.remove(wid)
 
-
-
-
-
     def register(self, w_uuid, capacity=10):
         worker = self.worker_registry.add_worker(w_uuid,capacity)
         self.server.send_int(worker.wid, 1, w_uuid, Tags.MPI_REGISTY_ACK)
