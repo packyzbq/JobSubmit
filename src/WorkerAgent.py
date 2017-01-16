@@ -112,7 +112,7 @@ class WorkerAgent(BaseThread):
         # use while to check receive buffer or Client buffer
         self.client.run()
         self.register()
-
+        # ensure the worker is registered and initialed
         while True:
             #already register and inistialize
             if self.register_flag and self.initialized:
@@ -133,8 +133,6 @@ class WorkerAgent(BaseThread):
                             self.register_flag = True
                             # ask for api_ini
                             self.client.send_int(self.wid, 1, 0, Tags.APP_INI_ASK)
-                            # start worker
-                            self.worker.start()
                         else:
                             # TODO register fail
                             raise
@@ -149,8 +147,10 @@ class WorkerAgent(BaseThread):
                     if msg_t.tag == Tags.APP_INI:
                         task_info = eval(json.loads(msg_t.sbuf))
                         assert task_info.has_key('app_ini_boot') and task_info.has_key('app_ini_data') and task_info.has_key('res_dir')
-                        tmp_task = Task4Worker(0, task_info['app_ini_boot'], task_info['app_ini_data'], task_info['res_dir'])
-                        self.task_queue.put(tmp_task)
+                        self.app_ini_task_lock.acquire()
+                        self.app_ini_task = Task4Worker(0, task_info['app_ini_boot'], task_info['app_ini_data'], task_info['res_dir'])
+                        self.app_ini_task_lock.release()
+                        #self.task_queue.put(tmp_task)
                         #wake worker
                         if self.worker.get_status() == WorkerStatus.NEW:
                             self.cond.acquire()
@@ -161,7 +161,7 @@ class WorkerAgent(BaseThread):
                         continue
             else:
                 continue
-
+        # message handle
         while not self.get_stop_flag():
 
             # single task finish ,notify master
@@ -173,10 +173,12 @@ class WorkerAgent(BaseThread):
                     tmp_task= self.task_completed_queue.get()
                     send_str = self.MSG_wrapper(wid=self.wid, tid=tmp_task.tid, time_start=tmp_task.time_start, time_fin=tmp_task.time_finish, status=tmp_task.task_status)
                     self.client.send_string(send_str, len(send_str), 0, Tags.TASK_FIN)
-
+            else:
+                self.task_sync_lock.release()
             # handle msg from master
             if not self.recv_buffer.empty():
                 msg_t = self.recv_buffer.get()
+                '''
                 if msg_t.tag == Tags.APP_INI:
                     #TODO consider if not a complete command
                     comm_dict = json.loads(msg_t.sbuf)
@@ -189,9 +191,10 @@ class WorkerAgent(BaseThread):
                     self.cond.acquire()
                     self.cond.notify()
                     self.cond.release()
+                '''
 
-                elif msg_t.tag == Tags.TASK_ADD:
-                    if self.task_queue.qsize() == self.capacity :
+                if msg_t.tag == Tags.TASK_ADD:
+                    if self.task_queue.qsize() == self.capacity:
                         #TODO add error handler: out of queue bound
                         raise
                     comm_dict = json.loads(msg_t.sbuf)
@@ -204,16 +207,7 @@ class WorkerAgent(BaseThread):
                         self.cond.notify()
                         self.cond.release()
 
-                #elif msg_t.tag == Tags.TASK_SYNC:
-                #    comm_dict = json.loads(msg_t.sbuf)
-                #    comm_send = dict()
-                #    t_tid = comm_dict['tid']
-                #    comm_send['tid'] = t_tid
-                #    comm_send['task_status'] = self.task_list[t_tid].task_status
-                #    comm_send['time_start'] = self.task_list[t_tid].time_start
-                #    comm_send['time_finish'] = self.task_list[t_tid].time_finish
-                #    send_str = json.dumps(comm_send)
-                #    self.client.send_string(send_str, len(send_str), 0 , Tags.TASK_SYNC)
+
 
                 elif msg_t.tag == Tags.TASK_REMOVE:
                     pass
